@@ -6,6 +6,7 @@ const path = require("path");
 const { graphqlHTTP } = require("express-graphql");
 const graphqlSchema = require("./graphql/schema");
 const graphqlResolver = require("./graphql/resolvers");
+const auth = require('./middleware/auth')
 
 const app = express();
 
@@ -52,7 +53,7 @@ app.use((req, res, next) => {
   //Allow the origins to use the specific http methods
   res.setHeader(
     "Access-Control-Allow-Methods",
-    "GET, POST, PUT, PATCH, DELETE"
+    "OPTIONS, GET, POST, PUT, PATCH, DELETE"
   );
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   //Set a response
@@ -61,6 +62,9 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+//Checking the middleware if the user is authenticated
+app.use(auth)
 
 app.use(
   "/graphql",
@@ -77,7 +81,7 @@ app.use(
       }
       //Retrieving from resolver the characteristic of error
       const data = err.originalError.data
-      const message = err.originalError.message || 'An error occurred!'
+      const message = err.message || 'An error occurred!'
       const code = err.originalError.code || 500
       return {message: message, status: code, data: data}
     }
@@ -87,6 +91,7 @@ app.use(
 
 //Error middleware this always has to stay at last middleware
 app.use((error, req, res, next) => {
+  console.log(error);
   //If status code is undefined, then the status will be 500
   const status = error.statusCode || 500;
   //Extracting the error message
