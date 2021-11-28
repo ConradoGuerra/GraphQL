@@ -3,10 +3,11 @@ const express = require("express");
 const mongoose = require("mongoose");
 const multer = require("multer");
 const path = require("path");
+const { clearImage } = require("./util/file");
 const { graphqlHTTP } = require("express-graphql");
 const graphqlSchema = require("./graphql/schema");
 const graphqlResolver = require("./graphql/resolvers");
-const auth = require('./middleware/auth')
+const auth = require("./middleware/auth");
 
 const app = express();
 
@@ -27,7 +28,7 @@ const fileStorage = multer.diskStorage({
 //Creating a filter of files
 const fileFilter = (req, file, cb) => {
   if (
-    file.mimetype === "image//png" ||
+    file.mimetype === "image/png" ||
     file.mimetype === "image/jpg" ||
     file.mimetype === "image/jpeg"
   ) {
@@ -57,14 +58,34 @@ app.use((req, res, next) => {
   );
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   //Set a response
-  if(req.method === 'OPTIONS'){
-    return res.sendStatus(200)
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
   }
   next();
 });
 
 //Checking the middleware if the user is authenticated
-app.use(auth)
+app.use(auth);
+
+//Middleware to verify if the image path had changed
+app.put("/post-image", (req, res, next) => {
+  if (!req.isAuth) {
+    throw new Error("Not Authenticated!");
+  }
+  //If not have changed, then when send this message
+  if (!req.file) {
+    return res.status(200).json({ message: "File not found!" });
+  }
+  //If changed, then the oldPath will be erased
+  if (req.body.oldPath) {
+    clearImage(req.body.oldPath);
+  }
+  const imageUrlPath = req.file.path.replace("\\", "/");
+
+  return res
+    .status(201)
+    .json({ message: "File stored", filePath: imageUrlPath });
+});
 
 app.use(
   "/graphql",
@@ -74,18 +95,17 @@ app.use(
     //Enable the IDE
     graphiql: true,
     //Formatting the error
-    customFormatErrorFn(err){
+    customFormatErrorFn(err) {
       //If it's not an original error, if it is a technical error
-      if(!err.originalError){
-        return err
+      if (!err.originalError) {
+        return err;
       }
       //Retrieving from resolver the characteristic of error
-      const data = err.originalError.data
-      const message = err.message || 'An error occurred!'
-      const code = err.originalError.code || 500
-      return {message: message, status: code, data: data}
-    }
-
+      const data = err.originalError.data;
+      const message = err.message || "An error occurred!";
+      const code = err.originalError.code || 500;
+      return { message: message, status: code, data: data };
+    },
   })
 );
 

@@ -3,6 +3,7 @@ const Post = require("../models/post");
 const bcrypt = require("bcryptjs");
 const validator = require("validator");
 const jwt = require("jsonwebtoken");
+const {clearImage} = require("../util/file");
 
 module.exports = {
   //Creating a function exactly the same as schema
@@ -152,4 +153,140 @@ module.exports = {
       totalPosts: totalPosts,
     };
   },
+
+  post: async function ({ id }, req) {
+    //Checking the middleware authentication
+    if (!req.isAuth) {
+      const error = new Error("Not authenticated!");
+      error.code = 401;
+      throw error;
+    }
+    const post = await Post.findById(id).populate('creator');
+    if(!post){
+      const error = new Error('No post found!')
+      error.code = 404
+      throw error
+    }
+    const imageUrl = "http://localhost:8080/" + post.imageUrl;
+    post.imageUrl = imageUrl
+    return {
+      ...post._doc,
+      _id: post._id.toString(),
+      createdAt: post.createdAt.toString(),
+      updatedAt: post.updatedAt.toString()
+    }
+  },
+
+  updatePost: async function({id, postInput}, req){
+    if (!req.isAuth) {
+      const error = new Error("Not authenticated!");
+      error.code = 401;
+      throw error;
+    }
+    const post = await Post.findById(id).populate('creator')
+    if(!post){
+      const error = new Error('No post found!')
+      error.code = 404
+      throw error
+    }
+    //If the userId is different from the post creator
+    if(req.userId.toString() !== post.creator._id.toString()){
+      const error = new Error('Not authorized')
+      error.code = 403
+      throw error
+    }
+    //Validation check
+    const errors = [];
+    if (
+      validator.isEmpty(postInput.title) ||
+      !validator.isLength(postInput.title, { min: 5 })
+    ) {
+      errors.push({ message: "Invalid title" });
+    }
+    if (
+      validator.isEmpty(postInput.content) ||
+      !validator.isLength(postInput.content, { min: 5 })
+    ) {
+      errors.push({ message: "Invalid content" });
+    }
+    if (errors.length > 0) {
+      const error = new Error("Invalid Input");
+      error.data = errors;
+      error.code = 422;
+      throw error;
+    }
+    post.title = postInput.title
+    post.content = postInput.content
+    if(postInput.imageUrl !== 'undefined'){
+      post.imageUrl = postInput.imageUrl
+    }
+    const updatedPost = await post.save()
+    return {
+      ...updatedPost._doc,
+      _id: updatedPost._id.toString(),
+      createdAt: updatedPost.createdAt.toString(),
+      updatedAt: updatedPost.updatedAt.toString(),
+    }
+  },
+
+  deletePost: async function({id}, req){
+    if (!req.isAuth) {
+      const error = new Error("Not authenticated!");
+      error.code = 401;
+      throw error;
+    }
+    const post = await Post.findById(id)
+    if(!post){
+      const error = new Error('No post found!')
+      error.code = 404
+      throw error
+    }
+    //If the userId is different from the post creator
+    if(req.userId.toString() !== post.creator.toString()){
+      const error = new Error('Not authorized')
+      error.code = 403
+      throw error
+    }
+
+    //Clearing the image path
+    clearImage(post.imageUrl)
+
+    //Removing the post from mondodb
+    await Post.findByIdAndRemove(id)
+
+    //Removing the post id from user in mongodb
+    const user = await User.findById(req.userId)
+    user.posts.pull(id)
+    await user.save()
+
+    return true
+
+  },
+
+  //I HAVE to pass an argument as firts element
+  userStatus: async function(args, req){
+    if (!req.isAuth) {
+      const error = new Error("Not authenticated!");
+      error.code = 401;
+      throw error;
+    }
+    const user = await User.findById(req.userId)
+    return {
+      status: user.status
+    }
+  },
+
+  updateUserStatus: async function({statusInput}, req){
+    if (!req.isAuth) {
+      const error = new Error("Not authenticated!");
+      error.code = 401;
+      throw error;
+    }
+    const user = await User.findById(req.userId)
+    user.status = statusInput
+    await user.save()
+    return {
+      status: user.status
+    }
+  } 
 };
